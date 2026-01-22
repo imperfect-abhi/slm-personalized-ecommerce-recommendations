@@ -2,10 +2,9 @@
 
 **From-scratch SLM + LoRA + RAG for engaging, low-cost, privacy-friendly e-commerce recommendations**
 
-![Project Banner / Demo GIF Placeholder]
-*(Add a short GIF or screenshot here later – e.g., Streamlit UI showing input → generated narrative)*
 
-## 🎯 Project Goal
+
+## Project Goal
 
 Build an **end-to-end, portfolio-grade ML project** that demonstrates:
 
@@ -41,66 +40,93 @@ The model generates **coherent, engaging recommendation text** like:
 - Docker support for easy deployment
 - Bias & fairness checks on recommendations
 
-## Repository Structure
 
-personalized-recommendation-narratives-slm/
-│
-├── README.md                     ← main entry point, project overview, demo GIF/video link, setup instructions
-│
-├── requirements.txt              ← pinned dependencies
-├── setup.py                      ← optional, if we want to make it installable
-│
-├── notebooks/
-│   ├── 01_project_overview_and_motivation.ipynb
-│   ├── 02_data_exploration_and_preparation.ipynb
-│   ├── 03_slm_architecture_from_scratch.ipynb          ← heavily based on your original notebook + explanations
-│   ├── 04_adding_lora_and_quantization.ipynb
-│   ├── 05_building_rag_retriever.ipynb
-│   ├── 06_fine_tuning_and_experiment_tracking.ipynb
-│   ├── 07_evaluation_and_quality_assessment.ipynb
-│   └── 08_inference_examples_and_controlled_generation.ipynb
-│
-├── src/
-│   ├── __init__.py
-│   ├── data/
-│   │   ├── __init__.py
-│   │   ├── dataset.py               ← custom Dataset + collate_fn
-│   │   ├── preprocessing.py         ← tokenization, prompt templates, memmap helpers
-│   │   └── rag_retriever.py         ← FAISS index builder + search logic
-│   │
-│   ├── model/
-│   │   ├── __init__.py
-│   │   ├── gpt.py                   ← core GPT architecture (from your notebook + modifications)
-│   │   ├── lora.py                  ← LoRA wrappers / injection logic
-│   │   └── utils.py                 ← init weights, generation helpers, KV cache
-│   │
-│   ├── training/
-│   │   ├── __init__.py
-│   │   ├── trainer.py               ← training loop, logging, checkpointing
-│   │   └── evaluate.py              ← metrics computation
-│   │
-│   └── inference/
-│       ├── __init__.py
-│       └── generator.py             ← high-level recommendation generation with RAG
-│
-├── app/
-│   ├── main.py                      ← FastAPI backend
-│   ├── streamlit_app.py             ← frontend demo
-│   └── utils.py                     ← API helpers
-│
-├── configs/
-│   ├── base.yaml                    ← hydra-style config (model, training, data)
-│   └── inference.yaml
-│
-├── scripts/
-│   ├── download_data.py             ← helper to download + subsample HF datasets
-│   ├── prepare_data.py              ← creates .bin files
-│   ├── train.py                     ← entry point for training
-│   └── generate_demo.py             ← example generations
-│
-├── mlruns/                          ← MLflow tracking folder (gitignored)
-├── .gitignore
-├── docker/
-│   └── Dockerfile
-└── docs/
-    └── architecture.md              ← mermaid diagrams, explanations
+## Quick Start (Local / Colab)
+
+1. Clone the repo
+   ```bash
+   git clone https://github.com/yourusername/personalized-recommendation-narratives-slm.git
+   cd personalized-recommendation-narratives-slm
+
+2. Install dependencies
+```pip install -r requirements.txt```
+
+3. (Optional) Download & prepare data subset
+```python scripts/download_data.py --subset electronics --max_samples 500000```
+```python scripts/prepare_data.py```
+
+4. Explore the notebooks in order (start with notebooks/01_...)
+
+5. Run the demo app
+```streamlit run app/streamlit_app.py```
+or start the API:
+```uvicorn app.main:app --reload```
+
+
+## Datasets Used
+
+- **Primary:** Amazon Reviews 2023 (McAuley Lab / Hugging Face) — metadata + reviews
+- **Augmentation:** Retailrocket e-commerce sessions (Kaggle)
+- **Subsampling strategy:** Electronics / Books categories for initial experiments
+
+
+## Results & Benchmarks  
+*(Preliminary / Expected – Update After Runs)*
+
+### Model Performance
+
+| Metric | Value (Target) | Notes / Hardware |
+|------|---------------|------------------|
+| Validation Perplexity | 18–28 | After 1–3 epochs on 500k samples |
+| ROUGE-L (narrative coherence) | 0.32–0.45 | vs. reference human-like summaries |
+| Human-rated relevance (1–5) | 3.8–4.3 / 5 | Blind eval on 100 samples |
+| Inference time (per generation) | 400–900 ms | M2 Pro 16GB / RTX 3060 |
+| Quantized model size (8-bit) | ~35–45 MB | bitsandbytes / torch.quantization |
+| VRAM usage during fine-tuning | 6–10 GB | LoRA + bf16 + gradient checkpoint |
+| Simulated CTR uplift vs random | +15–35% | Mock A/B on held-out sessions |
+
+**MacBook-specific note:**  
+Expect ~1.5–2× slower training than NVIDIA GPUs, but inference is very competitive thanks to MPS.  
+Use the `--device mps` flag in training scripts if needed.
+
+---
+
+## Trade-offs & Design Decisions
+
+| Aspect | Pro | Con | Chosen Mitigation / Rationale |
+|------|-----|-----|-------------------------------|
+| Small model (~60M params) | Fast inference, low memory, runs on laptop | Limited zero-shot knowledge | Heavy RAG + domain-specific fine-tuning |
+| LoRA instead of full fine-tune | 100–1000× less VRAM, fast iterations | Slightly lower peak performance | Higher rank (32) + multi-epoch + good init |
+| RAG integration | Grounds recs in real products, reduces hallucination | Adds ~100–300 ms latency | FAISS on CPU + precomputed embeddings + caching |
+| Narrative vs simple list recs | Higher engagement, trust, conversion | Harder to evaluate automatically | Hybrid metrics (ROUGE + human + proxy CTR) |
+| Tiktoken (GPT-2) tokenizer | Fast, proven, no training needed | Suboptimal for domain-specific tokens | Acceptable trade-off for speed & simplicity |
+| Memmapped `.bin` files | Handles 100M+ tokens without RAM explosion | Slightly slower random access | Ideal for MacBook limited RAM (16–32GB typical) |
+| No rotary embeddings (RoPE) | Simpler code, faithful to original notebook | Worse long-context extrapolation | Context ≤512 tokens sufficient |
+| Streamlit + FastAPI | Quick interactive demo + production API | Not the fastest web framework | Ideal for portfolio showcase & rapid iteration |
+
+---
+
+## Future Extensions (Ideas)
+
+- Multimodal: Condition on product images (CLIP / SigLIP embeddings)
+- Session-based recs using Retailrocket click sequences
+- On-device export (ONNX / Core ML for iOS/macOS)
+- Preference optimization (DPO / ORPO) for more persuasive tone
+- Real A/B testing harness with mock e-commerce backend
+
+---
+
+## License
+
+MIT – feel free to fork, use, and adapt. Attribution appreciated.
+
+---
+
+## Author
+
+**Abhishek** (Bengaluru, 2026)
+
+Advanced portfolio project showcasing from-scratch SLM engineering + modern efficiency techniques.
+
+⭐ Star if helpful!  
+Questions, suggestions, or want to collaborate? Open an issue or PR.
